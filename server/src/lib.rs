@@ -3,12 +3,9 @@ use store::Store;
 use sync::Syncer;
 use tokio::sync::mpsc;
 
-use axum::{
-    Router,
-    extract::{Path, State},
-    routing::get,
-};
+use axum::{Router, routing::get};
 
+mod handlers;
 mod rpc;
 mod silentpayments;
 mod store;
@@ -57,9 +54,9 @@ impl Server {
         let state = self.db.clone();
 
         let app = Router::new()
-            .route("/", get(root))
-            .route("/blocks/tip", get(get_chain_tip))
-            .route("/blocks/{height}", get(get_block_by_height))
+            .route("/", get(handlers::root))
+            .route("/blocks/tip", get(handlers::get_chain_tip))
+            .route("/blocks/{height}", get(handlers::get_block_by_height))
             .with_state(state);
 
         let listener = tokio::net::TcpListener::bind(&self.cfg.host).await?;
@@ -67,18 +64,4 @@ impl Server {
         axum::serve(listener, app).await?;
         Ok(())
     }
-}
-
-// API handlers
-
-pub async fn root() -> &'static str {
-    "Silent Payment Server"
-}
-
-pub async fn get_chain_tip(State(db): State<Store>) -> String {
-    // TODO: Figure out how to return a number lol.
-    db.get_synced_blocks_height().await.to_string()
-}
-pub async fn get_block_by_height(State(_db): State<Store>, Path(_height): Path<i64>) -> String {
-    todo!()
 }
