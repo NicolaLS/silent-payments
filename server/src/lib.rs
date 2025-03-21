@@ -2,7 +2,9 @@ use bitcoincore_rpc::{
     Auth, Client, RpcApi,
     bitcoin::{OutPoint, Transaction, Txid},
 };
+use rpc::*;
 use std::{str::FromStr, sync::Arc, time::Duration};
+use sync::Syncer;
 use tokio::{sync::mpsc, time::sleep};
 
 use axum::{
@@ -12,7 +14,9 @@ use axum::{
 };
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 
+pub mod rpc;
 mod silentpayments;
+mod sync;
 
 pub struct ServerConfig {
     pub host: String,
@@ -40,9 +44,11 @@ impl Server {
         // TODO: RPC Config / Syncer config.
         let auth = Auth::UserPass("sus".into(), "sus".into());
         let client = Client::new("http://localhost:18443", auth).unwrap();
-        // TODO:)Get start height from db
-        let sync_from_height = get_synced_blocks_height(&self.db).await;
-        sync_from(client, sync_from_height as u64, sync_tx);
+
+        // Run syncer.
+        let mut syncer = Syncer::new(client, 1000);
+        let sync_from_height = get_synced_blocks_height(&self.db).await as u64;
+        tokio::task::spawn(async move { syncer.sync_from(sync_from_height, sync_tx).await });
 
         // Receive blocks from syncer and add them to DB.
         let sync_pool = self.db.clone();
@@ -69,71 +75,6 @@ impl Server {
     }
 }
 
-// Sync.
-
-fn sync_from<C>(client: C, height: u64, tx: mpsc::Sender<silentpayments::SPBlock>)
-where
-    C: BitcionRpc + Send + Sync + 'static,
-{
-    let mut synced_blocks = height;
-    // FIXME: Not even sure if I need Arc<> here..
-    let rpc_client = Arc::new(client);
-
-    tokio::task::spawn(async move {
-        loop {
-            let chain_tip = rpc_client.get_chain_tip().unwrap();
-
-            if synced_blocks < chain_tip as u64 {
-                let block = rpc_client.get_block_by_height(synced_blocks + 1).unwrap();
-                // TODO: Filter block.
-                // TODO: Calculate tweaks.
-                synced_blocks += 1;
-                //let sp_block = SPBlock::new(block, synced_blocks);
-                let prevout_getter_rpc_client = rpc_client.clone();
-                let prevout_getter = move |outpoint: &OutPoint| {
-                    let tx = prevout_getter_rpc_client.get_transaction(&outpoint.txid)?;
-                    Ok(tx.output.clone())
-                };
-                let sp_block = silentpayments::SPBlock::new(synced_blocks, block, prevout_getter);
-                if let Err(err) = tx.send(sp_block).await {
-                    println!("error: {}", err);
-                    break;
-                }
-            } else {
-                sleep(Duration::from_secs(5)).await;
-            }
-        }
-    });
-}
-pub trait BitcionRpc {
-    fn get_block_by_height(
-        &self,
-        height: u64,
-    ) -> bitcoincore_rpc::Result<bitcoincore_rpc::bitcoin::Block>;
-    fn get_chain_tip(&self) -> bitcoincore_rpc::Result<usize>;
-    fn get_transaction(&self, txid: &Txid) -> bitcoincore_rpc::Result<Transaction>;
-}
-
-impl BitcionRpc for Client {
-    fn get_block_by_height(
-        &self,
-        height: u64,
-    ) -> bitcoincore_rpc::Result<bitcoincore_rpc::bitcoin::Block> {
-        let block_hash = self.get_block_hash(height)?;
-        self.get_block(&block_hash)
-    }
-
-    fn get_chain_tip(&self) -> bitcoincore_rpc::Result<usize> {
-        let best_block_hash = self.get_best_block_hash()?;
-        let best_block_info = self.get_block_info(&best_block_hash)?;
-        Ok(best_block_info.height)
-    }
-
-    fn get_transaction(&self, txid: &Txid) -> bitcoincore_rpc::Result<Transaction> {
-        self.get_raw_transaction(txid, None)
-    }
-}
-
 // API handlers
 
 pub async fn root() -> &'static str {
@@ -145,42 +86,6 @@ pub async fn get_block_by_height(
     Path(height): Path<i64>,
 ) -> String {
     todo!()
-}
-
-// Silent Payments
-
-// FIXME: neeed to use i64 all the time bcs of sqlite..
-
-#[derive(Default, Debug)]
-struct SPOutput {
-    vout: i64,
-    value: i64,
-    script_pub_key: String,
-}
-
-#[derive(Default, Debug)]
-struct SPTransaction {
-    txid: String,
-    scalar: String,
-    outputs: Vec<SPOutput>,
-}
-
-#[derive(Default, Debug)]
-struct SPBlock {
-    height: u64,
-    hash: String,
-    txs: Vec<SPTransaction>,
-}
-
-// NOTE: Could do From<Block> but getting height from bip34 is not reliable..
-impl SPBlock {
-    fn new(block: bitcoincore_rpc::bitcoin::Block, height: u64) -> Self {
-        // Filter transactions and calculate tweaks.
-        Self {
-            height,
-            ..Default::default()
-        }
-    }
 }
 
 // DB
@@ -263,7 +168,7 @@ async fn add_block(block: silentpayments::SPBlock, pool: &SqlitePool) {
 
         for (i, output) in block_tx.tx.output.iter().enumerate() {
             let value_sat = output.value.to_sat() as i64;
-            let script_pubkey_hex = output.script_pubkey.to_asm_string();
+            let script_pubkey_hex = output.script_pubkey.to_hex_string();
             let vout = i as i64;
             sqlx::query!(
                 r#"
