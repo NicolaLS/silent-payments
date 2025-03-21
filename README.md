@@ -4,41 +4,80 @@
 - Store and serve taproot output transactions.
 - Given a mnemonic code, detect outputs to silent payment address.
 
+# API
+
+note: this is just brainstorming, no idea if this is going to look like this in the end.
+
+GET /blocks/height/<height>/transactions
+GET /blocks/height/<height>/tweaks
+
+GET /transactions/<txid>
+GET /transactions/<txid>/tweak
+
+POST /wallet (create wallet and return wallet id or mnemonic) (only use for development)
+
+Websocket subscriptions:
+/ws/tweaks: Stream new tweaks.
+/ws/transactions: Stream new transactions.
+/ws/<wallet_id>/outputs: Stream outputs owned by wallet
+
+# DB
+
+Since this is a POC, I'll use Sqlite but ofc. for a real project Postgres would be better. I never
+worked much with DB's so I'm having some problems.
+- Sqlite has max integer i64 but many types I have are usize or u64...right now just casting and panic
+if something goes wrong but I guess I'll have to store it as BLOB instead.
+- Sqlite does not have structured types, so storing tx. data is annoying.
+
+I won't store all tx. data, we are actually only (at most) interested in:
+- txid
+- output (vout, scriptPubKey, value)
+- tweaks
+
+Because it is weird to store a Vec/List of outputs in sqlite I just have another table of outputs
+with forign key referencing txs.
+
+Tables (for now):
+
+**Blocks**
+- height INTEGER (PK)
+- hash STRING (hex)
+- tx_count INTEGER
+
+**Transactions**
+- id INTEGER (PK) (not txid)
+- block INTEGER (references block(height))
+- txid STRING (hex)
+- scalar STRING (hex)
+
+**Outputs**
+- id INTEGER (PK)
+- tx INTEGER (references transactions(id), used for outpoint)
+- vout INTEGER (outpoint index)
+- value INTEGER (sats)
+- script_pub_key STRING (hex encoded)
+
 # Plan
 
-## JSON-RPC vs. gRPC
+## JSON-RPC vs. gRPC vs REST
 
-Performance should not be an issue because the data that has to be serialized will have minimal
-structure (e.g a list with lots of items in contrast to a complex object) so gRPC for performance
-would be overkill. Because of this I wanted to choose JSON-RPC because it is easy to understand,
-however for DX I think I'll use gRPC because of the nice [tonic](https://crates.io/crates/tonic)
-crate I can use for that so I can focus on the silent payment stuff instead of implementing a
-JSON-RPC server too (would need to implement HTTP/WS transport and most of JSON-2.0 RPC protocol
-myself, there are some crates for primitives and even full frameworks but they are not good/easy to
-use..).
+Initially I wanted to use JSON-RPC/gRPC because I thought its a good fit for subscriptions but it
+actually does not make any sense because the main purpose is just to GET public tweak data.
 
+So I'll implement a REST API with `axum` and for the subscriptions just have simple websockets that
+only stream data but take no requests.
 
 ## Functionality
 
-- Subscribe new tweaks
-- Get tweaks (by block, by txids, or all)
-- Get transactions (by block, by txids, by filter, or all)
-- Get output, provided a shared secret, B_spend and a list of labels
-  ask the server to find outputs.
-- Subscribe outputs, given a mnemonic or key-pair subscribe to outputs to this wallet only
-  instead of subscribing to partial tweaks, calculating the SS and then asking the server to
-  find the output.
+Look at API for reference.
+- get public tweak data for blocks, or transactions.
+- get transactions by block or txid
+- create a wallet (getting a unique wallet id)
+- subscribe to new public tweaks via WS
+- subscribe to new txs of new blocks via WS
+- subscribe to outpouts for some `id` wallet via WS.
 
-## Limiting scope
-
-- Serve DB tweaks only: the server won't calculate tweak data for some tx. or even block on demand
-  even though it could. Just to keep things simple. If queried block/tx is not in DB, error.
-- Server subscirbes to new transactions from the point it was started only. It won't sync. from a
-  certain block height.
-- Server does not keep track of utxos, clients have to figure out whether the output for a tx. with
-  a matching tweak is a utxo for their wallet or history.
-- Don't deal with chain re-orgs.
-- Don't process incomming txs (mempool)
+Wallet should ofc. only be used for demos/testing.
 
 
 # Notes
@@ -104,3 +143,4 @@ with `b_spend + label + tweak`.
 **Question:** Why does it even say to check the output before subtracting in the BIP? Does
 that mean "labels" is opt in feature and we can use no labels and only label 0 for change if we
 want? I thought you'd have to use at least "1" label.
+
