@@ -1,11 +1,7 @@
-use bitcoincore_rpc::{
-    Auth, Client, RpcApi,
-    bitcoin::{OutPoint, Transaction, Txid},
-};
-use rpc::*;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use bitcoincore_rpc::{Auth, Client};
+use std::str::FromStr;
 use sync::Syncer;
-use tokio::{sync::mpsc, time::sleep};
+use tokio::sync::mpsc;
 
 use axum::{
     Router,
@@ -14,21 +10,19 @@ use axum::{
 };
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 
-pub mod rpc;
+mod rpc;
 mod silentpayments;
 mod sync;
 
+// TODO: Bitcoin Core RPC Config.
 pub struct ServerConfig {
     pub host: String,
     pub db_url: String,
-    //rpcuser: String,
-    //rpcpass: String,
 }
 
 pub struct Server {
     cfg: ServerConfig,
     db: SqlitePool,
-    // TODO: Add syncer handle.
 }
 
 impl Server {
@@ -41,7 +35,7 @@ impl Server {
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let (sync_tx, mut sync_rx) = mpsc::channel(64);
-        // TODO: RPC Config / Syncer config.
+
         let auth = Auth::UserPass("sus".into(), "sus".into());
         let client = Client::new("http://localhost:18443", auth).unwrap();
 
@@ -55,7 +49,6 @@ impl Server {
         tokio::task::spawn(async move {
             while let Some(msg) = sync_rx.recv().await {
                 println!("new block: {:?}", msg);
-                // FIXME: Pass block height with msg.
                 add_block(msg, &sync_pool).await;
             }
         });
@@ -187,7 +180,6 @@ async fn add_block(block: silentpayments::SPBlock, pool: &SqlitePool) {
 
     db_tx.commit().await.unwrap();
 }
-async fn get_block() {}
 
 async fn get_synced_blocks_height(pool: &SqlitePool) -> i64 {
     sqlx::query_scalar!("SELECT MAX(height) FROM blocks")

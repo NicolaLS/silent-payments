@@ -4,7 +4,7 @@ use bitcoincore_rpc::bitcoin::{
     Block, OutPoint, PublicKey, ScriptBuf, Transaction, TxIn, TxOut, WitnessVersion,
 };
 
-fn get_input_public_key(txin: &TxIn) -> PublicKey {
+fn get_input_public_key(_txin: &TxIn) -> PublicKey {
     PublicKey::from_str("03e262cb486947a9601ffbc064818afe6cb0d545830ac4e693706cbd4b12171dfe")
         .unwrap()
 }
@@ -19,21 +19,15 @@ where
 {
     // Coinbase transactions can't be used.
     if tx.is_coinbase() {
-        println!("tx is coinbase return None");
         return None;
     }
 
     // The transaction contains at least one BIP341 taproot output (note: spent transactions
     // optionally can be skipped by only considering transactions with at least one unspent taproot
     // output)
-    for output in tx.output.iter() {
-        println!("Script hex: {}", output.script_pubkey.to_hex_string());
-        println!("Is taproot: {}", output.script_pubkey.is_p2tr());
-    }
     tx.output.retain(|txout| txout.script_pubkey.is_p2tr());
 
     if tx.output.is_empty() {
-        println!("tx does not have taproot outputs");
         return None;
     }
 
@@ -116,7 +110,6 @@ pub struct SPTransaction {
 }
 
 impl SPBlock {
-    // TODO: Pass getprevout closure instead of client.
     pub fn new<F: FnMut(&OutPoint) -> bitcoincore_rpc::Result<TxOut>>(
         height: u64,
         mut block: Block,
