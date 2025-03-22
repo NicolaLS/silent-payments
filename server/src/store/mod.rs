@@ -4,7 +4,8 @@ use std::str::FromStr;
 
 use sqlx::{Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
 
-use crate::silentpayments;
+use crate::SPBlock;
+
 
 pub struct BlockModel {
     pub height: i64,
@@ -93,7 +94,7 @@ impl Store {
         .await
         .unwrap();
     }
-    pub async fn add_block(&self, block: silentpayments::SPBlock) {
+    pub async fn add_block(&self, block: SPBlock) {
         let mut db_tx = self.pool.begin().await.unwrap();
 
         let block_model_height = block.height.try_into().expect("FIXME: Store as BLOB");
@@ -142,8 +143,8 @@ impl Store {
     }
 }
 
-impl From<silentpayments::SPBlock> for BlockModel {
-    fn from(value: silentpayments::SPBlock) -> Self {
+impl From<SPBlock> for BlockModel {
+    fn from(value: SPBlock) -> Self {
         let height = value.height.try_into().expect("FIXME: Store as BLOB");
         let tx_count = value
             .txs

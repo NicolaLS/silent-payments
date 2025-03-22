@@ -5,9 +5,12 @@ use std::{
 };
 
 use bitcoincore_rpc::bitcoin::{OutPoint, TxOut};
+use rpc::BitcionRpc;
 use tokio::{sync::mpsc, time::sleep};
 
-use crate::{rpc::BitcionRpc, silentpayments};
+use crate::SPBlock;
+
+mod rpc;
 
 pub struct Syncer<C: BitcionRpc> {
     client: C,
@@ -73,7 +76,7 @@ impl<C: BitcionRpc> Syncer<C> {
     }
 
     // NOTE: Instead of message passing this could also return a stream that yields new blocks.
-    pub async fn sync_from(&mut self, height: u64, tx: mpsc::Sender<silentpayments::SPBlock>) {
+    pub async fn sync_from(&mut self, height: u64, tx: mpsc::Sender<SPBlock>) {
         let mut synced_blocks = height;
         loop {
             let chain_tip = self.client.get_chain_tip().unwrap();
@@ -85,7 +88,7 @@ impl<C: BitcionRpc> Syncer<C> {
                 // sense but my rust is too bad to do it differently, I just tried to stop the
                 // compiler to scream at me until it worked.
                 let sp_block =
-                    silentpayments::SPBlock::new(synced_blocks, block, &mut |outpoint| {
+                    SPBlock::new(synced_blocks, block, &mut |outpoint| {
                         self.get_prevout(outpoint)
                     });
 
