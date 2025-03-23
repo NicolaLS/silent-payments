@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 axum = "0.8.1"
 bitcoincore-rpc = "0.19.0"
+derive_more = { version = "2.0.1", features = ["from"] }
 sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.44.1", features = ["full"] }
 tracing = "0.1.41"

@@ -5,6 +5,7 @@ use std::str::FromStr;
 use sqlx::{Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
 
 use crate::SPBlock;
+use crate::Result;
 
 
 pub struct BlockModel {
@@ -36,7 +37,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub async fn new(url: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(url: String) -> Result<Self> {
         let options = SqliteConnectOptions::from_str(&url)?.create_if_missing(true);
         let pool = SqlitePool::connect_with(options).await?;
         Ok(Self { pool })

@@ -1,6 +1,7 @@
 use axum::{routing::get, Router};
 
 use crate::store::Store;
+use crate::Result;
 
 mod handlers;
 
@@ -19,7 +20,7 @@ impl Server {
         Self { cfg, db }
     }
 
-    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(&self) -> Result<()> {
 
 
         // SqlitePool is Arc<T>.

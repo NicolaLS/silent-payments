@@ -4,11 +4,15 @@ use std::{
     usize,
 };
 
-use bitcoincore_rpc::bitcoin::{OutPoint, TxOut};
+use bitcoincore_rpc::bitcoin::{Block, OutPoint, TxOut};
 use rpc::BitcionRpc;
 use tokio::{sync::mpsc, time::sleep};
 
 use crate::SPBlock;
+use crate::{
+    Result, SPTransaction, has_output_witness_version_greater_v1, has_taproot_outputs,
+    sum_input_public_keys,
+};
 
 mod rpc;
 
@@ -58,7 +62,7 @@ impl<C: BitcionRpc> Syncer<C> {
         }
     }
 
-    pub fn get_prevout(&mut self, outpoint: &OutPoint) -> bitcoincore_rpc::Result<TxOut> {
+    pub fn get_prevout(&mut self, outpoint: &OutPoint) -> Result<TxOut> {
         if let Some(previous_outputs) = self.prevout_cache.get(outpoint) {
             let txout = previous_outputs
                 .get(outpoint.vout as usize)
@@ -75,28 +79,71 @@ impl<C: BitcionRpc> Syncer<C> {
         Ok(txout.clone())
     }
 
-    // NOTE: Instead of message passing this could also return a stream that yields new blocks.
-    pub async fn sync_from(&mut self, height: u64, tx: mpsc::Sender<SPBlock>) {
+    fn process_block(&mut self, block: Block, height: u64) -> Result<SPBlock> {
+        let block_hash = block.block_hash().to_string();
+        let mut eligible_txs = vec![];
+        for tx in block.txdata.iter() {
+            // Filter coinbase.
+            if tx.is_coinbase() {
+                continue;
+            }
+
+            // The transaction contains at least one BIP341 taproot output (note: spent transactions
+            // optionally can be skipped by only considering transactions with at least one unspent taproot
+            // output)
+            if !has_taproot_outputs(tx) {
+                continue;
+            }
+
+            let prevouts = tx
+                .input
+                .iter()
+                .map(|txin| self.get_prevout(&txin.previous_output))
+                .collect::<Result<Vec<TxOut>>>()?;
+
+            // The transaction does not spend an output with SegWit version > 1
+            if has_output_witness_version_greater_v1(&prevouts) {
+                continue;
+            }
+
+            // The transaction has at least one input from the Inputs For Shared Secret Derivation list. In
+            // case there was no eligible input the sum of public keys will be None.
+            if let Some((sum, _lex_low_outpoint)) = sum_input_public_keys(&tx.input, &prevouts) {
+                // Create the SPTransaction
+                // TODO: Use real public key sum and input hash to compute the public
+                // tweak.
+                let mut edited_tx = tx.clone();
+                edited_tx
+                    .output
+                    .retain(|txout| txout.script_pubkey.is_p2tr());
+                let eligible_tx = SPTransaction {
+                    tx: edited_tx,
+                    scalar: sum.to_string(),
+                };
+                eligible_txs.push(eligible_tx);
+            }
+        }
+
+        Ok(SPBlock {
+            height,
+            hash: block_hash,
+            txs: eligible_txs,
+        })
+    }
+    // NOTE: Instead of message passing this could also return a stream that yields new blocks. Or
+    // just give syncer. a DB.
+    pub async fn sync_from(&mut self, height: u64, tx: mpsc::Sender<SPBlock>) -> Result<()> {
         let mut synced_blocks = height;
         loop {
-            let chain_tip = self.client.get_chain_tip().unwrap();
+            let chain_tip = self.client.get_chain_tip()? as u64;
 
-            if synced_blocks < chain_tip as u64 {
-                let block = self.client.get_block_by_height(synced_blocks + 1).unwrap();
+            if synced_blocks < chain_tip {
+                let block = self.client.get_block_by_height(synced_blocks + 1)?;
                 synced_blocks += 1;
-                // FIXME: The prevout getter stuff is weird, I don't think &mut closure makes much
-                // sense but my rust is too bad to do it differently, I just tried to stop the
-                // compiler to scream at me until it worked.
-                let sp_block =
-                    SPBlock::new(synced_blocks, block, &mut |outpoint| {
-                        self.get_prevout(outpoint)
-                    });
 
-                if let Err(err) = tx.send(sp_block).await {
-                    // TODO: Handle error / pass it to server.
-                    println!("error: {}", err);
-                    break;
-                }
+                let sp_block = self.process_block(block, synced_blocks)?;
+
+                tx.send(sp_block).await?;
             } else {
                 sleep(Duration::from_secs(5)).await;
             }
