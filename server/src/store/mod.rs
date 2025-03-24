@@ -3,6 +3,7 @@
 use std::str::FromStr;
 
 use sqlx::{Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
+use tokio::sync::broadcast;
 
 use crate::SPBlock;
 use crate::Result;
@@ -34,15 +35,22 @@ pub struct OutputModel {
 #[derive(Clone)]
 pub struct Store {
     pool: SqlitePool,
+    sub_tx: broadcast::Sender<SPBlock>,
 }
 
 impl Store {
     pub async fn new(url: String) -> Result<Self> {
         let options = SqliteConnectOptions::from_str(&url)?.create_if_missing(true);
         let pool = SqlitePool::connect_with(options).await?;
-        Ok(Self { pool })
+
+        let (sub_tx,  _) = broadcast::channel(512);
+
+        Ok(Self { pool, sub_tx })
     }
 
+    pub fn subscribe_blocks(&self) -> broadcast::Receiver<SPBlock> {
+        self.sub_tx.subscribe()
+    }
     pub async fn get_synced_blocks_height(&self) -> i64 {
         sqlx::query_scalar!("SELECT MAX(height) FROM blocks")
             .fetch_one(&self.pool)
@@ -107,7 +115,7 @@ impl Store {
 
         let block_model = BlockModel {
             height: block_model_height,
-            hash: block.hash,
+            hash: block.hash.clone(),
             tx_count: block_model_tx_count,
         };
 
@@ -141,6 +149,8 @@ impl Store {
         }
 
         db_tx.commit().await.unwrap();
+        // TODO: Handle error.
+        let _ = self.sub_tx.send(block);
     }
 }
 

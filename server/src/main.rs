@@ -1,14 +1,12 @@
-
 use bitcoincore_rpc::{Auth, Client};
 use silent_payments_server::server::{Server, ServerConfig};
-use tokio::sync::mpsc;
 
+use silent_payments_server::Result;
 use silent_payments_server::store::Store;
 use silent_payments_server::sync::Syncer;
-use silent_payments_server::Result;
 
 #[tokio::main]
-async fn main() -> Result<()>{
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cfg = ServerConfig {
@@ -24,20 +22,23 @@ async fn main() -> Result<()>{
     let auth = Auth::UserPass("sus".into(), "sus".into());
     let client = Client::new("http://localhost:18443", auth)?;
 
-    let (sync_tx, mut sync_rx) = mpsc::channel(64);
-
     // Run syncer.
-    let mut syncer = Syncer::new(client, 1000);
-    //let sync_from_height = get_synced_blocks_height(&self.db).await as u64;
-    let sync_from_height = db.get_synced_blocks_height().await as u64;
-    tokio::task::spawn(async move { syncer.sync_from(sync_from_height, sync_tx).await });
+    let mut syncer = Syncer::new(client, db.clone(), 1000);
+    tokio::task::spawn(async move { syncer.sync_from().await });
 
-    // Receive blocks from syncer and add them to DB.
-    let sync_db = db.clone();
+    // Subscribe blocks that were added to DB.
+    let sub_db = db.clone();
     tokio::task::spawn(async move {
-        while let Some(msg) = sync_rx.recv().await {
-            println!("new block: {:?}", msg);
-            sync_db.add_block(msg).await;
+        let mut rx = sub_db.subscribe_blocks();
+        loop {
+            match rx.recv().await {
+                Ok(block) => {
+                    println!("new block: {:?}", block);
+                }
+                Err(_) => {
+                    println!("Subscription dropped");
+                }
+            }
         }
     });
 

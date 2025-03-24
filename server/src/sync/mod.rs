@@ -6,18 +6,19 @@ use std::{
 
 use bitcoincore_rpc::bitcoin::{Block, OutPoint, TxOut};
 use rpc::BitcionRpc;
-use tokio::{sync::mpsc, time::sleep};
+use tokio::time::sleep;
 
-use crate::SPBlock;
 use crate::{
     Result, SPTransaction, has_output_witness_version_greater_v1, has_taproot_outputs,
     sum_input_public_keys,
 };
+use crate::{SPBlock, store::Store};
 
 mod rpc;
 
 pub struct Syncer<C: BitcionRpc> {
     client: C,
+    store: Store,
     prevout_cache: PrevoutCache,
 }
 
@@ -53,11 +54,12 @@ impl PrevoutCache {
 }
 
 impl<C: BitcionRpc> Syncer<C> {
-    pub fn new(client: C, cache_size: usize) -> Self {
+    pub fn new(client: C, store: Store, cache_size: usize) -> Self {
         let prevout_cache = PrevoutCache::new(cache_size);
 
         Self {
             client,
+            store,
             prevout_cache,
         }
     }
@@ -132,8 +134,8 @@ impl<C: BitcionRpc> Syncer<C> {
     }
     // NOTE: Instead of message passing this could also return a stream that yields new blocks. Or
     // just give syncer. a DB.
-    pub async fn sync_from(&mut self, height: u64, tx: mpsc::Sender<SPBlock>) -> Result<()> {
-        let mut synced_blocks = height;
+    pub async fn sync_from(&mut self) -> Result<()> {
+        let mut synced_blocks = self.store.get_synced_blocks_height().await as u64;
         loop {
             let chain_tip = self.client.get_chain_tip()? as u64;
 
@@ -143,7 +145,7 @@ impl<C: BitcionRpc> Syncer<C> {
 
                 let sp_block = self.process_block(block, synced_blocks)?;
 
-                tx.send(sp_block).await?;
+                self.store.add_block(sp_block).await;
             } else {
                 sleep(Duration::from_secs(5)).await;
             }

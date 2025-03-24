@@ -72,14 +72,14 @@ pub fn get_input_public_key(_txin: &TxIn, _prevout: &TxOut) -> Result<usize> {
     Ok(0)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SPBlock {
     pub height: u64,
     pub hash: String,
     pub txs: Vec<SPTransaction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SPTransaction {
     // Edited bitcoin transaction. Contains only taproot outputs.
     pub tx: Transaction,
