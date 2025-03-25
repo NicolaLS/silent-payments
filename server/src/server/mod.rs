@@ -1,7 +1,7 @@
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 
-use crate::store::Store;
 use crate::Result;
+use crate::store::Store;
 
 mod handlers;
 
@@ -21,8 +21,6 @@ impl Server {
     }
 
     pub async fn run(&self) -> Result<()> {
-
-
         // SqlitePool is Arc<T>.
         let state = self.db.clone();
 
@@ -30,6 +28,7 @@ impl Server {
             .route("/", get(handlers::root))
             .route("/blocks/tip", get(handlers::get_chain_tip))
             .route("/blocks/{height}", get(handlers::get_block_by_height))
+            .route("/ws", get(handlers::ws_subscribe_handler))
             .with_state(state);
 
         let listener = tokio::net::TcpListener::bind(&self.cfg.host).await?;
