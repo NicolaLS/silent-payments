@@ -11,7 +11,11 @@ pub async fn root() -> &'static str {
 }
 
 pub async fn get_chain_tip(State(db): State<Store>) -> String {
-    db.get_synced_blocks_height().await.to_string()
+    db.get_synced_blocks_height()
+        .await
+        .unwrap()
+        .unwrap()
+        .to_string()
 }
 pub async fn get_block_by_height(State(_db): State<Store>, Path(_height): Path<i64>) -> String {
     todo!()
