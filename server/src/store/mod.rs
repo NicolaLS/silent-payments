@@ -5,9 +5,8 @@ use std::str::FromStr;
 use sqlx::{Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast;
 
-use crate::SPBlock;
 use crate::Result;
-
+use crate::SPBlock;
 
 pub struct BlockModel {
     pub height: i64,
@@ -43,7 +42,7 @@ impl Store {
         let options = SqliteConnectOptions::from_str(&url)?.create_if_missing(true);
         let pool = SqlitePool::connect_with(options).await?;
 
-        let (sub_tx,  _) = broadcast::channel(512);
+        let (sub_tx, _) = broadcast::channel(512);
 
         Ok(Self { pool, sub_tx })
     }
