@@ -5,7 +5,6 @@ use std::{
 };
 
 use bitcoincore_rpc::bitcoin::{Block, OutPoint, TxOut};
-use rpc::BitcionRpc;
 use tokio::time::sleep;
 
 use crate::{
@@ -15,6 +14,8 @@ use crate::{
 use crate::{SPBlock, store::Store};
 
 mod rpc;
+
+pub use rpc::BitcionRpc;
 
 pub struct Syncer<C: BitcionRpc> {
     client: C,
@@ -153,6 +154,71 @@ impl<C: BitcionRpc> Syncer<C> {
             } else {
                 sleep(Duration::from_secs(5)).await;
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use bitcoincore_rpc::bitcoin::{Amount, ScriptBuf, Txid};
+
+    use super::*;
+
+    #[test]
+    fn test_prevout_cache() {
+        let mut outpoints = vec![];
+        let mut txouts = vec![];
+
+        for i in 0..10 {
+            let txid =
+                Txid::from_str("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+                    .unwrap();
+            let outpoint = OutPoint::new(txid, i);
+            outpoints.push(outpoint);
+
+            let txout_dummy = TxOut {
+                value: Amount::from_sat(i.into()),
+                script_pubkey: ScriptBuf::new(),
+            };
+            txouts.push(vec![txout_dummy]);
+        }
+
+        // Cache size 5 outpoint vecs.
+        let mut cache = PrevoutCache::new(5);
+
+        for op in outpoints.iter() {
+            assert_eq!(cache.get(&op), None);
+        }
+
+        cache.insert(outpoints[0], txouts[0].clone());
+        assert_eq!(cache.get(&outpoints[0]), Some(&txouts[0]));
+        assert_ne!(cache.get(&outpoints[0]), Some(&txouts[1]));
+
+        // Insert 5 more so the first one should be dropped.
+        cache.insert(outpoints[1], txouts[1].clone());
+        cache.insert(outpoints[2], txouts[2].clone());
+        cache.insert(outpoints[3], txouts[3].clone());
+        cache.insert(outpoints[4], txouts[4].clone());
+        assert_eq!(cache.get(&outpoints[0]), Some(&txouts[0]));
+        cache.insert(outpoints[5], txouts[5].clone());
+        assert_eq!(cache.get(&outpoints[0]), None);
+        assert!(cache.map.len() <= cache.size);
+        // Insert all, now only num. 5 to 10 (index 4 to 9) should be some.
+        cache.insert(outpoints[6], txouts[6].clone());
+        cache.insert(outpoints[7], txouts[7].clone());
+        cache.insert(outpoints[8], txouts[8].clone());
+        cache.insert(outpoints[9], txouts[9].clone());
+
+        assert!(cache.map.len() <= cache.size);
+
+        for i in 0..5 {
+            assert_eq!(cache.get(&outpoints[i]), None);
+        }
+
+        for i in 5..10 {
+            assert_eq!(cache.get(&outpoints[i]), Some(&txouts[i]));
         }
     }
 }

@@ -6,6 +6,9 @@ pub mod server;
 pub mod store;
 pub mod sync;
 
+#[cfg(test)]
+pub mod tests;
+
 mod error;
 
 pub use self::error::{Error, Result};
