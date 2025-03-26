@@ -144,3 +144,11 @@ with `b_spend + label + tweak`.
 that mean "labels" is opt in feature and we can use no labels and only label 0 for change if we
 want? I thought you'd have to use at least "1" label.
 
+
+# Logging
+
+To ignore `debug` logs from external crates (e.g. `sqlx`) run:
+`RUST_LOG=silent_payments_server=debug cargo run`
+
+To see all logs on that log level just do:
+`RUST_LOG=debug cargo run`

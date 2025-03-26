@@ -5,6 +5,7 @@ use std::str::FromStr;
 use sqlx::sqlite::SqliteQueryResult;
 use sqlx::{Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast;
+use tracing::info;
 
 use crate::Result;
 use crate::SPBlock;
@@ -154,8 +155,8 @@ impl Store {
 
         db_tx.commit().await?;
         match self.sub_tx.send(block) {
-            Ok(num_sub) => println!("{} subscribers notified of new block.", num_sub),
-            Err(_) => println!("there are zero subscriptions to new blocks"),
+            Ok(num_sub) => info!("Notified {} subscribers of new block.", num_sub),
+            Err(_) => info!("There are no subscribers for new blocks."),
         }
         Ok(())
     }

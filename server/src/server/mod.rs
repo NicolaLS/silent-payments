@@ -1,4 +1,5 @@
 use axum::{Router, routing::get};
+use tracing::info;
 
 use crate::Result;
 use crate::store::Store;
@@ -33,6 +34,7 @@ impl Server {
 
         let listener = tokio::net::TcpListener::bind(&self.cfg.host).await?;
 
+        info!("HTTP Server listening on: {}", self.cfg.host);
         axum::serve(listener, app).await?;
         Ok(())
     }
