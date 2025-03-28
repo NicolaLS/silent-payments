@@ -5,12 +5,13 @@ use std::{
 };
 
 use bitcoincore_rpc::bitcoin::{Block, OutPoint, TxOut};
+use secp256k1::{PublicKey, Scalar};
 use tokio::time::sleep;
 use tracing::{debug, info};
 
 use crate::{
-    Result, SPTransaction, has_output_witness_version_greater_v1, has_taproot_outputs,
-    sum_input_public_keys,
+    Result, SPTransaction, calculate_input_hash, has_output_witness_version_greater_v1,
+    has_taproot_outputs, try_get_input_public_key,
 };
 use crate::{SPBlock, store::Store};
 
@@ -142,23 +143,52 @@ impl<C: BitcionRpc> Syncer<C> {
 
             // The transaction has at least one input from the Inputs For Shared Secret Derivation list. In
             // case there was no eligible input the sum of public keys will be None.
-            if let Some((sum, _lex_low_outpoint)) = sum_input_public_keys(&tx.input, &prevouts) {
-                // Create the SPTransaction
-                // TODO: Use real public key sum and input hash to compute the public
-                // tweak.
-                let mut edited_tx = tx.clone();
-                edited_tx
-                    .output
-                    .retain(|txout| txout.script_pubkey.is_p2tr());
-                let eligible_tx = SPTransaction {
-                    tx: edited_tx,
-                    scalar: sum.to_string(),
-                };
-                info!("Adding transaction to eligible transactions");
-                eligible_txs.push(eligible_tx);
-            } else {
-                debug!("Transaction has no inputs for shared secret derivation. Skipping.")
+            let public_keys_for_shared_secret_derivation: Vec<PublicKey> = tx
+                .input
+                .iter()
+                .zip(&prevouts)
+                .map(|(input, prevout)| try_get_input_public_key(input, prevout))
+                .flatten()
+                .collect();
+
+            if public_keys_for_shared_secret_derivation.len() == 0 {
+                debug!("Transaction does not have any inputs for shared secret derivation");
+                continue;
             }
+
+            let (first_input, rest) = public_keys_for_shared_secret_derivation
+                .split_first()
+                .unwrap();
+            let input_public_key_sum = rest
+                .iter()
+                .try_fold(*first_input, |acc, item| acc.combine(item))
+                .unwrap();
+
+            let lowest_outpoint = tx
+                .input
+                .iter()
+                .map(|txin| txin.previous_output)
+                .min()
+                .expect("Transaction has at least one input");
+
+            let input_hash = calculate_input_hash(lowest_outpoint, input_public_key_sum);
+            let secp = secp256k1::Secp256k1::new();
+            let scalar = input_public_key_sum
+                .mul_tweak(&secp, &Scalar::from_be_bytes(input_hash).unwrap())
+                .unwrap();
+            let scalar_bytes = scalar.serialize();
+            let scalar_hex = hex::encode(scalar_bytes);
+
+            let mut edited_tx = tx.clone();
+            edited_tx
+                .output
+                .retain(|txout| txout.script_pubkey.is_p2tr());
+            let eligible_tx = SPTransaction {
+                tx: edited_tx,
+                scalar: scalar_hex,
+            };
+            info!("Adding transaction to eligible transactions");
+            eligible_txs.push(eligible_tx);
         }
         info!(
             "Eligible transactions after filtering: {}",

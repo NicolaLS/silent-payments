@@ -2,6 +2,7 @@ use derive_more::From;
 
 #[derive(Debug, From)]
 pub enum Error {
+    InvalidInput,
     // -- module: sync.rs
     #[from]
     BitcoinRpc(bitcoincore_rpc::Error),

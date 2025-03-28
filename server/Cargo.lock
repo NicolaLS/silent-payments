@@ -173,7 +173,7 @@ dependencies = [
  "bitcoin_hashes",
  "hex-conservative",
  "hex_lit",
- "secp256k1",
+ "secp256k1 0.29.1",
  "serde",
 ]
 
@@ -1463,6 +1463,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "secp256k1"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b50c5943d326858130af85e049f2661ba3c78b26589b8ab98e65e80ae44a1252"
+dependencies = [
+ "bitcoin_hashes",
+ "rand 0.8.5",
+ "secp256k1-sys",
+]
+
+[[package]]
 name = "secp256k1-sys"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1586,9 +1597,12 @@ name = "silent-payments-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bitcoin",
  "bitcoincore-rpc",
  "derive_more",
  "futures",
+ "hex",
+ "secp256k1 0.30.0",
  "sqlx",
  "tokio",
  "tracing",
