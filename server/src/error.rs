@@ -3,6 +3,11 @@ use derive_more::From;
 #[derive(Debug, From)]
 pub enum Error {
     InvalidInput,
+
+    // -- module server.rs
+    // FIXME: Should belong to DB but right now handlers decide whether it was found or not..
+    NotFound,
+
     // -- module: sync.rs
     #[from]
     BitcoinRpc(bitcoincore_rpc::Error),

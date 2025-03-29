@@ -1,7 +1,9 @@
-// TODO: Consider implementing a trait "DB" for better testability.
-
 use std::str::FromStr;
 
+use model::{
+    BlockModel, JoinedTransactionOutput, JoinedTransactionOutputCollection, OutputModel, Scalar,
+    Scalars, Transaction, TransactionModel, Transactions,
+};
 use sqlx::sqlite::SqliteQueryResult;
 use sqlx::{Sqlite, SqlitePool, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast;
@@ -10,36 +12,24 @@ use tracing::info;
 use crate::Result;
 use crate::SPBlock;
 
-pub struct BlockModel {
-    pub height: i64,
-    pub hash: String,
-    pub tx_count: i64,
-}
+pub mod model;
 
-pub struct TransactionModel {
-    #[allow(dead_code)]
-    pub id: Option<i64>,
-    pub block: i64,
-    pub txid: String,
-    pub scalar: String,
-}
+// TODO:
+// - error handling for store
+// - WS API subscribe scalars/transactions json
+// - refactor
+//
+//
+// -> for error handling, don't use fetch_optional, just turn Row not found error to None,
+// even if return type is a Vec then empty vec means e.g. block found but no txs and none means
+// block not found.
 
-pub struct OutputModel {
-    #[allow(dead_code)]
-    pub id: Option<i64>,
-    pub tx: i64,
-    pub vout: i64,
-    pub value: i64,
-    pub script_pub_key: String,
-}
-
-pub struct TransactionRecord {
-    pub txid: String,
-    pub scalar: String,
-    pub vout: i64,
-    pub value: i64,
-    pub script_pub_key: String,
-}
+// FIXME: Right now in case the store is queried with height or txid it might return an empty vec.
+// However an empty vec could mean the height/txid exists but there is no txs/scalars for example,
+// or that the provided height/txid was wrong. In the latter case I'd like to return 404 not found
+// instead of an empty vec...but using fetch_all with the single query style I use right now, I
+// don't know if the parameter was wrong, or there's just no data.. Need to solve this elegantly..
+// for now I'll just return empty vecs..
 
 #[derive(Clone)]
 pub struct Store {
@@ -61,32 +51,35 @@ impl Store {
         self.sub_tx.subscribe()
     }
 
-    pub async fn get_latest_scalars(&self) -> Vec<String> {
-        sqlx::query_scalar!(
+    pub async fn get_latest_scalars(&self) -> Result<Scalars> {
+        let scalars = sqlx::query_scalar!(
             "SELECT scalar FROM transactions WHERE block = (SELECT MAX(height) FROM blocks)"
         )
         .fetch_all(&self.pool)
-        .await
-        .unwrap()
+        .await?;
+        Ok(Scalars { scalars })
     }
 
-    pub async fn get_scalars_by_height(&self, height: i64) -> Vec<String> {
-        sqlx::query_scalar!("SELECT scalar FROM transactions WHERE block = ?", height)
-            .fetch_all(&self.pool)
-            .await
-            .unwrap()
+    pub async fn get_scalars_by_height(&self, height: i64) -> Result<Scalars> {
+        let scalars =
+            sqlx::query_scalar!("SELECT scalar FROM transactions WHERE block = ?", height)
+                .fetch_all(&self.pool)
+                .await?;
+
+        Ok(Scalars { scalars })
     }
 
-    pub async fn get_scalar_by_txid(&self, txid: String) -> String {
-        sqlx::query_scalar!("SELECT scalar FROM transactions WHERE txid = ?", txid)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap()
+    pub async fn get_scalar_by_txid(&self, txid: String) -> Result<Option<Scalar>> {
+        let scalar = sqlx::query_scalar!("SELECT scalar FROM transactions WHERE txid = ?", txid)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(scalar.map(|scalar| Scalar { scalar }))
     }
 
-    pub async fn get_latest_transactions(&self) -> Vec<TransactionRecord> {
-        sqlx::query_as!(
-            TransactionRecord,
+    pub async fn get_latest_transactions(&self) -> Result<Transactions> {
+        let collection: JoinedTransactionOutputCollection = sqlx::query_as!(
+            JoinedTransactionOutput,
             r#"
         SELECT 
             t.txid, 
@@ -100,13 +93,15 @@ impl Store {
         "#,
         )
         .fetch_all(&self.pool)
-        .await
-        .unwrap()
+        .await?
+        .into();
+
+        Ok(collection.into())
     }
 
-    pub async fn get_transactions_by_height(&self, height: i64) -> Vec<TransactionRecord> {
-        sqlx::query_as!(
-            TransactionRecord,
+    pub async fn get_transactions_by_height(&self, height: i64) -> Result<Transactions> {
+        let collection: JoinedTransactionOutputCollection = sqlx::query_as!(
+            JoinedTransactionOutput,
             r#"
         SELECT 
             t.txid, 
@@ -121,15 +116,17 @@ impl Store {
             height
         )
         .fetch_all(&self.pool)
-        .await
-        .unwrap()
+        .await?
+        .into();
+
+        Ok(collection.into())
     }
 
     // Returns Vec aswell because we use join to get the outputs. This means one transaction with
     // e.g. three outputs will result in three TransactionRecord.
-    pub async fn get_transaction_by_txid(&self, txid: String) -> Vec<TransactionRecord> {
-        sqlx::query_as!(
-            TransactionRecord,
+    pub async fn get_transaction_by_txid(&self, txid: String) -> Result<Option<Transaction>> {
+        let collection: JoinedTransactionOutputCollection = sqlx::query_as!(
+            JoinedTransactionOutput,
             r#"
         SELECT 
             t.txid, 
@@ -144,8 +141,10 @@ impl Store {
             txid
         )
         .fetch_all(&self.pool)
-        .await
-        .unwrap()
+        .await?
+        .into();
+
+        Ok(collection.into())
     }
 
     pub async fn get_synced_blocks_height(&self) -> Result<Option<i64>> {
