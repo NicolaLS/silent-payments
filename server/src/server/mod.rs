@@ -28,7 +28,21 @@ impl Server {
         let app = Router::new()
             .route("/", get(handlers::root))
             .route("/blocks/tip", get(handlers::get_chain_tip))
-            .route("/blocks/{height}", get(handlers::get_block_by_height))
+            .route("/blocks/latest/scalars", get(handlers::get_latest_scalars))
+            .route(
+                "/blocks/latest/transactions",
+                get(handlers::get_latest_transactions),
+            )
+            .route(
+                "/blocks/height/{height}/scalars",
+                get(handlers::get_scalars),
+            )
+            .route(
+                "/blocks/height/{height}/transactions",
+                get(handlers::get_transactions),
+            )
+            .route("/transactions/{txid}", get(handlers::get_transaction))
+            .route("/transactions/{txid}/scalar", get(handlers::get_scalar))
             .route("/ws", get(handlers::ws_subscribe_handler))
             .with_state(state);
 

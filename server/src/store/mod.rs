@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteQueryResult;
-use sqlx::{Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
+use sqlx::{Sqlite, SqlitePool, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast;
 use tracing::info;
 
@@ -33,6 +33,14 @@ pub struct OutputModel {
     pub script_pub_key: String,
 }
 
+pub struct TransactionRecord {
+    pub txid: String,
+    pub scalar: String,
+    pub vout: i64,
+    pub value: i64,
+    pub script_pub_key: String,
+}
+
 #[derive(Clone)]
 pub struct Store {
     pool: SqlitePool,
@@ -52,6 +60,94 @@ impl Store {
     pub fn subscribe_blocks(&self) -> broadcast::Receiver<SPBlock> {
         self.sub_tx.subscribe()
     }
+
+    pub async fn get_latest_scalars(&self) -> Vec<String> {
+        sqlx::query_scalar!(
+            "SELECT scalar FROM transactions WHERE block = (SELECT MAX(height) FROM blocks)"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    pub async fn get_scalars_by_height(&self, height: i64) -> Vec<String> {
+        sqlx::query_scalar!("SELECT scalar FROM transactions WHERE block = ?", height)
+            .fetch_all(&self.pool)
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_scalar_by_txid(&self, txid: String) -> String {
+        sqlx::query_scalar!("SELECT scalar FROM transactions WHERE txid = ?", txid)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_latest_transactions(&self) -> Vec<TransactionRecord> {
+        sqlx::query_as!(
+            TransactionRecord,
+            r#"
+        SELECT 
+            t.txid, 
+            t.scalar, 
+            o.vout, 
+            o.value, 
+            o.script_pub_key 
+        FROM transactions t
+        INNER JOIN outputs o ON t.id = o.tx
+        WHERE t.block = (SELECT MAX(height) FROM blocks)
+        "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    pub async fn get_transactions_by_height(&self, height: i64) -> Vec<TransactionRecord> {
+        sqlx::query_as!(
+            TransactionRecord,
+            r#"
+        SELECT 
+            t.txid, 
+            t.scalar, 
+            o.vout, 
+            o.value, 
+            o.script_pub_key 
+        FROM transactions t
+        INNER JOIN outputs o ON t.id = o.tx
+        WHERE t.block = ? 
+        "#,
+            height
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    // Returns Vec aswell because we use join to get the outputs. This means one transaction with
+    // e.g. three outputs will result in three TransactionRecord.
+    pub async fn get_transaction_by_txid(&self, txid: String) -> Vec<TransactionRecord> {
+        sqlx::query_as!(
+            TransactionRecord,
+            r#"
+        SELECT 
+            t.txid, 
+            t.scalar, 
+            o.vout, 
+            o.value, 
+            o.script_pub_key 
+        FROM transactions t
+        INNER JOIN outputs o ON t.id = o.tx
+        WHERE t.txid = ? 
+        "#,
+            txid
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
+    }
+
     pub async fn get_synced_blocks_height(&self) -> Result<Option<i64>> {
         let height = sqlx::query_scalar!("SELECT MAX(height) FROM blocks")
             .fetch_one(&self.pool)
@@ -60,7 +156,7 @@ impl Store {
     }
 
     async fn add_output(
-        db_tx: &mut Transaction<'static, Sqlite>,
+        db_tx: &mut sqlx::Transaction<'static, Sqlite>,
         output_model: OutputModel,
     ) -> Result<SqliteQueryResult> {
         let query_result = sqlx::query!(
@@ -78,7 +174,7 @@ impl Store {
     }
 
     async fn add_transaction(
-        db_tx: &mut Transaction<'static, Sqlite>,
+        db_tx: &mut sqlx::Transaction<'static, Sqlite>,
         tx: TransactionModel,
     ) -> Result<i64> {
         let query_result = sqlx::query!(
@@ -95,7 +191,7 @@ impl Store {
         Ok(query_result.last_insert_rowid())
     }
     async fn add_block_meta(
-        db_tx: &mut Transaction<'static, Sqlite>,
+        db_tx: &mut sqlx::Transaction<'static, Sqlite>,
         block_model: BlockModel,
     ) -> Result<SqliteQueryResult> {
         let query_result = sqlx::query!(
