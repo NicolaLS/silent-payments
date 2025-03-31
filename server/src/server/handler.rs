@@ -4,22 +4,17 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::{Sink, SinkExt, Stream, StreamExt};
+use serde_json::json;
 
 use crate::{
     Error,
     store::{
         Store,
-        model::{Scalars, Transactions},
+        model::{Block, Scalars, Transactions},
     },
 };
 
 use crate::Result;
-
-// TODO:
-// POST /wallet (create wallet and return wallet id or mnemonic) (only use for development)
-// WS /ws/tweaks: Stream new tweaks.
-// WS /ws/transactions: Stream new transactions.
-// WS /ws/<wallet_id>/outputs: Stream outputs owned by wallet
 
 pub async fn root() -> &'static str {
     "Silent Payment Server"
@@ -87,26 +82,55 @@ pub async fn get_chain_tip(State(db): State<Store>) -> String {
 
 // Websockets
 
-pub async fn ws_subscribe_handler(state: State<Store>, ws: WebSocketUpgrade) -> Response {
+pub enum SubscriptionKind {
+    Scalars,
+    Transactions,
+}
+
+pub async fn ws_subscribe(
+    state: State<Store>,
+    ws: WebSocketUpgrade,
+    kind: SubscriptionKind,
+) -> Response {
     ws.on_upgrade(|socket| {
         let (write, read) = socket.split();
-        ws_subscribe_socket(state, write, read)
+        ws_subscribe_socket(state, write, read, kind)
     })
 }
 
-pub async fn ws_subscribe_socket<W, R>(State(db): State<Store>, mut write: W, mut _read: R)
-where
+pub async fn ws_subscribe_socket<W, R>(
+    State(db): State<Store>,
+    mut write: W,
+    mut _read: R,
+    kind: SubscriptionKind,
+) where
     W: Sink<Message> + Unpin,
     R: Stream<Item = core::result::Result<Message, axum::Error>>,
 {
     let mut rx = db.subscribe_blocks();
+    let ser_msg = match kind {
+        SubscriptionKind::Scalars => |block: Block| {
+            let scalars = block.transactions.into_iter().map(|tx| tx.scalar).collect();
+            json!(Scalars { scalars }).to_string()
+        },
+        SubscriptionKind::Transactions => |block: Block| {
+            let transactions = block.transactions;
+            json!(Transactions { transactions }).to_string()
+        },
+    };
+
     while let Ok(block) = rx.recv().await {
-        if write
-            .send(Message::Text(format!("new block: {:?}", block).into()))
-            .await
-            .is_err()
-        {
+        if block.transactions.is_empty() {
+            continue;
+        }
+
+        let msg = ser_msg(block);
+        if write.send(Message::Text(msg.into())).await.is_err() {
             break;
         }
     }
 }
+
+// TODO:
+// POST /wallet (create wallet and return wallet id or mnemonic) (only use for development)
+// WS /ws/<wallet_id>/outputs: Stream outputs owned by wallet

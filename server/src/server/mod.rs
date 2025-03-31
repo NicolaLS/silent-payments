@@ -42,7 +42,18 @@ impl Server {
             )
             .route("/transactions/{txid}", get(handler::get_transaction))
             .route("/transactions/{txid}/scalar", get(handler::get_scalar))
-            .route("/ws", get(handler::ws_subscribe_handler))
+            .route(
+                "/ws/scalars",
+                get(|state, ws| {
+                    handler::ws_subscribe(state, ws, handler::SubscriptionKind::Scalars)
+                }),
+            )
+            .route(
+                "/ws/transactions",
+                get(|state, ws| {
+                    handler::ws_subscribe(state, ws, handler::SubscriptionKind::Transactions)
+                }),
+            )
             .with_state(state);
 
         let listener = tokio::net::TcpListener::bind(&self.cfg.host).await?;
