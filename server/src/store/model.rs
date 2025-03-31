@@ -2,31 +2,6 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-// Models for DB table schema.
-
-pub struct BlockModel {
-    pub height: i64,
-    pub hash: String,
-    pub tx_count: i64,
-}
-
-pub struct TransactionModel {
-    #[allow(dead_code)]
-    pub id: Option<i64>,
-    pub block: i64,
-    pub txid: String,
-    pub scalar: String,
-}
-
-pub struct OutputModel {
-    #[allow(dead_code)]
-    pub id: Option<i64>,
-    pub tx: i64,
-    pub vout: i64,
-    pub value: i64,
-    pub script_pub_key: String,
-}
-
 // Intermediate utility types.
 pub struct JoinedTransactionOutput {
     pub txid: String,
@@ -40,6 +15,12 @@ pub struct JoinedTransactionOutputCollection(pub Vec<JoinedTransactionOutput>);
 
 // ORM-like method return types. Serialized as responses for REST API/WS.
 
+#[derive(Debug, Clone)]
+pub struct Block {
+    pub height: i64,
+    pub hash: String,
+    pub transactions: Vec<Transaction>,
+}
 #[derive(Serialize)]
 pub struct Scalar {
     pub scalar: String,
@@ -50,14 +31,14 @@ pub struct Scalars {
     pub scalars: Vec<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Output {
-    pub vout: usize,
-    pub value: u64,
+    pub vout: i64,
+    pub value: i64,
     pub spk: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Transaction {
     pub txid: String,
     pub scalar: String,
@@ -87,8 +68,8 @@ impl From<JoinedTransactionOutputCollection> for Option<Transaction> {
 
         for record in value.0.iter() {
             outputs.push(Output {
-                vout: record.vout as usize,
-                value: record.value as u64,
+                vout: record.vout,
+                value: record.value,
                 spk: record.script_pub_key.clone(),
             });
         }
@@ -110,8 +91,8 @@ impl From<JoinedTransactionOutputCollection> for Transactions {
             let scalar = tx_record.scalar.clone();
 
             let output = Output {
-                vout: tx_record.vout as usize,
-                value: tx_record.value as u64,
+                vout: tx_record.vout,
+                value: tx_record.value,
                 spk: tx_record.script_pub_key.clone(),
             };
 

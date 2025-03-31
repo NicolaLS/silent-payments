@@ -9,11 +9,11 @@ use secp256k1::{PublicKey, Scalar};
 use tokio::time::sleep;
 use tracing::{debug, info};
 
+use crate::store::Store;
 use crate::{
-    Result, SPTransaction, calculate_input_hash, has_output_witness_version_greater_v1,
-    has_taproot_outputs, try_get_input_public_key,
+    Result, calculate_input_hash, has_output_witness_version_greater_v1, has_taproot_outputs,
+    store::model, try_get_input_public_key,
 };
-use crate::{SPBlock, store::Store};
 
 mod rpc;
 
@@ -106,7 +106,7 @@ impl<C: BitcionRpc> Syncer<C> {
         Ok(txout.clone())
     }
 
-    fn process_block(&mut self, block: Block, height: u64) -> Result<SPBlock> {
+    fn process_block(&mut self, block: Block, height: u64) -> Result<model::Block> {
         let block_hash = block.block_hash().to_string();
         info!(
             "Processing new block with hash: {} with {} transactions.",
@@ -179,13 +179,27 @@ impl<C: BitcionRpc> Syncer<C> {
             let scalar_bytes = scalar.serialize();
             let scalar_hex = hex::encode(scalar_bytes);
 
-            let mut edited_tx = tx.clone();
-            edited_tx
+            let relevant_outputs: Vec<model::Output> = tx
                 .output
-                .retain(|txout| txout.script_pubkey.is_p2tr());
-            let eligible_tx = SPTransaction {
-                tx: edited_tx,
+                .iter()
+                .enumerate()
+                .filter_map(|(i, out)| {
+                    if out.script_pubkey.is_p2tr() {
+                        Some(model::Output {
+                            vout: i as i64,
+                            value: out.value.to_sat() as i64,
+                            spk: out.script_pubkey.to_hex_string(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let eligible_tx = model::Transaction {
+                txid: tx.compute_txid().to_string(),
                 scalar: scalar_hex,
+                outputs: relevant_outputs,
             };
             info!("Adding transaction to eligible transactions");
             eligible_txs.push(eligible_tx);
@@ -195,14 +209,13 @@ impl<C: BitcionRpc> Syncer<C> {
             eligible_txs.len()
         );
 
-        Ok(SPBlock {
-            height,
+        Ok(model::Block {
+            height: height as i64,
             hash: block_hash,
-            txs: eligible_txs,
+            transactions: eligible_txs,
         })
     }
-    // NOTE: Instead of message passing this could also return a stream that yields new blocks. Or
-    // just give syncer. a DB.
+
     pub async fn sync_from(&mut self) -> Result<()> {
         let mut synced_blocks = self
             .store
@@ -219,9 +232,10 @@ impl<C: BitcionRpc> Syncer<C> {
                 let block = self.client.get_block_by_height(synced_blocks + 1)?;
                 synced_blocks += 1;
 
-                let sp_block = self.process_block(block, synced_blocks)?;
+                let block = self.process_block(block, synced_blocks)?;
+                info!("Proccessed block successfully");
 
-                self.store.add_block(sp_block).await?;
+                self.store.add_block(block).await?;
             } else {
                 info!("Already synced up to this height. Waiting 5 seconds.");
                 sleep(Duration::from_secs(5)).await;
