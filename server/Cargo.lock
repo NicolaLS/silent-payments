@@ -1600,6 +1600,7 @@ dependencies = [
  "bitcoin",
  "bitcoincore-rpc",
  "derive_more",
+ "dotenvy",
  "futures",
  "hex",
  "secp256k1 0.30.0",

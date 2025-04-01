@@ -3,15 +3,11 @@ use axum::response::IntoResponse;
 use axum::{Router, routing::get};
 use tracing::info;
 
+use crate::config::ServerConfig;
 use crate::store::Store;
 use crate::{Error, Result};
 
 mod handler;
-
-pub struct ServerConfig {
-    pub host: String,
-    pub db_url: String,
-}
 
 pub struct Server {
     cfg: ServerConfig,
@@ -56,9 +52,10 @@ impl Server {
             )
             .with_state(state);
 
-        let listener = tokio::net::TcpListener::bind(&self.cfg.host).await?;
+        let host = format!("{}:{}", self.cfg.server_host, self.cfg.server_port);
+        let listener = tokio::net::TcpListener::bind(&host).await?;
 
-        info!("HTTP Server listening on: {}", self.cfg.host);
+        info!("HTTP Server listening on: {}", host);
         axum::serve(listener, app).await?;
         Ok(())
     }

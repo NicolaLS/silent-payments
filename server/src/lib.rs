@@ -7,6 +7,7 @@ use secp256k1::{Parity, PublicKey, XOnlyPublicKey};
 pub mod server;
 pub mod store;
 pub mod sync;
+pub mod config;
 
 #[cfg(test)]
 pub mod tests;
@@ -14,6 +15,7 @@ pub mod tests;
 mod error;
 
 pub use self::error::{Error, Result};
+pub use self::config::Config;
 
 #[derive(Debug, Clone)]
 pub struct SPBlock {

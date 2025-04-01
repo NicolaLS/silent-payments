@@ -10,6 +10,7 @@ use sqlx::{Sqlite, SqlitePool, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast;
 use tracing::debug;
 
+use crate::config::DatabaseConfig;
 use crate::Result;
 
 pub mod model;
@@ -28,8 +29,8 @@ pub struct Store {
 }
 
 impl Store {
-    pub async fn new(url: String) -> Result<Self> {
-        let options = SqliteConnectOptions::from_str(&url)?.create_if_missing(true);
+    pub async fn new(cfg: DatabaseConfig) -> Result<Self> {
+        let options = SqliteConnectOptions::from_str(&cfg.database_url)?.create_if_missing(true);
         let pool = SqlitePool::connect_with(options).await?;
 
         let (sub_tx, _) = broadcast::channel(512);

@@ -1,5 +1,6 @@
 use bitcoincore_rpc::{Auth, Client};
-use silent_payments_server::server::{Server, ServerConfig};
+use silent_payments_server::config::Config;
+use silent_payments_server::server::Server;
 
 use silent_payments_server::Result;
 use silent_payments_server::store::Store;
@@ -13,18 +14,18 @@ async fn main() -> Result<()> {
         .add_directive("silent_payments_server=debug".parse().unwrap());
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let cfg = ServerConfig {
-        host: "127.0.0.1:3000".into(),
-        db_url: "sqlite://dev.db".into(),
-    };
+    let cfg = Config::try_from_env()?;
 
-    let db = Store::new(cfg.db_url.clone()).await?;
+    let db = Store::new(cfg.database).await?;
 
     let server_db = db.clone();
-    let server = Server::new(cfg, server_db);
+    let server = Server::new(cfg.server, server_db);
 
-    let auth = Auth::UserPass("sus".into(), "sus".into());
-    let client = Client::new("http://localhost:18443", auth)?;
+    let rpcurl = cfg.syncer.rpc_url;
+    let rpcuser = cfg.syncer.rpc_user;
+    let rpcpass = cfg.syncer.rpc_pass;
+    let auth = Auth::UserPass(rpcuser.into(), rpcpass.into());
+    let client = Client::new(&rpcurl, auth)?;
 
     // Run syncer.
     info!("Running syncer in task");
