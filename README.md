@@ -1,10 +1,26 @@
-# BOSS POC: Silent Payment indexer
+# Chaincode BOSS POC: Silent Payment Indexer
 
 - Store and serve tweak data.
 - Store and serve taproot output transactions.
 - Given a mnemonic code, detect outputs to silent payment address.
 
-# REST API
+## Configuration
+
+Server is configured with env. variables for development a `.env` file can be used. No defaults are
+provided, and the server will error if any variable is missing. See [.env](./server/.env).
+
+## Running the server
+
+SQLite database is created if it does not exist and migrations are also automatically run.
+The server will start syncing from the confiugred `SYNC_FROM` height.
+
+**Run server**
+`cargo run`
+
+**Run tests**
+`cargo test`
+
+## REST API
 
 `GET /blocks/tip`
 
@@ -16,12 +32,12 @@ _Returns scalars in the latest synced block_
 
 ```json
 {
-	"scalars": [
-		"0300260cd166b0b9375963fdeea829c638ad74e69ddba80a43bf3388619d2ee96d",
-		"02393c02d8fce020e37e709367a74835bc2f4a292307be15d34211fe6982494caf",
-		"025e39ed89ccaf2e0d654f1540a427063e4fb7087526529e163729830dce4ffc52",
-		"03f6d1cb5ea84ec62d82a42c1ee55d9da96457a9823b9067981b04a7fc99df623b",
-	]
+  "scalars": [
+    "0300260cd166b0b9375963fdeea829c638ad74e69ddba80a43bf3388619d2ee96d",
+    "02393c02d8fce020e37e709367a74835bc2f4a292307be15d34211fe6982494caf",
+    "025e39ed89ccaf2e0d654f1540a427063e4fb7087526529e163729830dce4ffc52",
+    "03f6d1cb5ea84ec62d82a42c1ee55d9da96457a9823b9067981b04a7fc99df623b",
+  ]
 }
 ```
 
@@ -33,40 +49,40 @@ and outputs (vout, value, spk hex)._
 
 ```json
 {
-	"transactions": [
-		{
-			"txid": "370818bea6e50a63d628d6fa179411237be5a45419a2c36867926e50b48ca848",
-			"scalar": "035c2fb8ce078f77db70beb7317dede4cd079a83fc231c3c34d222faa306e7c48c",
-			"outputs": [
-				{
-					"vout": 0,
-					"value": 988438,
-					"spk": "5120ae66becf5234528a3f9d3e64545066a42f55c625daf288827c96fc5757c10c2b"
-				},
-				{
-					"vout": 1,
-					"value": 100000000,
-					"spk": "5120cc685d57c383b48ec9bbce71668ecda8c90aa57c5012347557484dfbcfff8981"
-				}
-			]
-		},
-		{
-			"txid": "98649f70b9a5b4c6ab78b2fe1f43eb09b3c8218bccb914dacfc1d6a18991d035",
-			"scalar": "025e39ed89ccaf2e0d654f1540a427063e4fb7087526529e163729830dce4ffc52",
-			"outputs": [
-				{
-					"vout": 0,
-					"value": 100000000,
-					"spk": "5120cc685d57c383b48ec9bbce71668ecda8c90aa57c5012347557484dfbcfff8981"
-				},
-				{
-					"vout": 1,
-					"value": 430221,
-					"spk": "51204e0fcc0220dc1a0e26ce0960e1fa6c7f73d1e2ebb1813d2a787fab95c17aed13"
-				}
-			]
-		}
-	]
+  "transactions": [
+    {
+      "txid": "370818bea6e50a63d628d6fa179411237be5a45419a2c36867926e50b48ca848",
+      "scalar": "035c2fb8ce078f77db70beb7317dede4cd079a83fc231c3c34d222faa306e7c48c",
+      "outputs": [
+        {
+          "vout": 0,
+          "value": 988438,
+          "spk": "5120ae66becf5234528a3f9d3e64545066a42f55c625daf288827c96fc5757c10c2b"
+        },
+        {
+          "vout": 1,
+          "value": 100000000,
+          "spk": "5120cc685d57c383b48ec9bbce71668ecda8c90aa57c5012347557484dfbcfff8981"
+        }
+      ]
+    },
+    {
+      "txid": "98649f70b9a5b4c6ab78b2fe1f43eb09b3c8218bccb914dacfc1d6a18991d035",
+      "scalar": "025e39ed89ccaf2e0d654f1540a427063e4fb7087526529e163729830dce4ffc52",
+      "outputs": [
+        {
+          "vout": 0,
+          "value": 100000000,
+          "spk": "5120cc685d57c383b48ec9bbce71668ecda8c90aa57c5012347557484dfbcfff8981"
+        },
+        {
+          "vout": 1,
+          "value": 430221,
+          "spk": "51204e0fcc0220dc1a0e26ce0960e1fa6c7f73d1e2ebb1813d2a787fab95c17aed13"
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -88,79 +104,19 @@ _Returns the scalar for this tx. only without the other transaction data._
 
 ```json
 {
-	"scalar": "0300260cd166b0b9375963fdeea829c638ad74e69ddba80a43bf3388619d2ee96d"
+  "scalar": "0300260cd166b0b9375963fdeea829c638ad74e69ddba80a43bf3388619d2ee96d"
 }
 ```
 
-TODO:
-- `POST /wallet` to create a wallet and get a wallet id that can be used to subscibe to outputs.
+## Websocket subscriptions
 
-# WS Stream
+`/ws/scalars`
 
-TODO:
-- stream scalars from new blocks
-- stream transactions from new blocks
-- stream outputs for some wallet id
+_Subscribes to new scalars. Streamed messages are JSON from `/blocks/<height>/scalars`._
 
+`/ws/transactions`
 
-
-# DB
-
-Since this is a POC, I'll use Sqlite but ofc. for a real project Postgres would be better. I never
-worked much with DB's so I'm having some problems.
-- Sqlite has max integer i64 but many types I have are usize or u64...right now just casting and panic
-if something goes wrong but I guess I'll have to store it as BLOB instead.
-- Sqlite does not have structured types, so storing tx. data is annoying.
-
-I won't store all tx. data, we are actually only (at most) interested in:
-- txid
-- output (vout, scriptPubKey, value)
-- tweaks
-
-Because it is weird to store a Vec/List of outputs in sqlite I just have another table of outputs
-with forign key referencing txs.
-
-Tables (for now):
-
-**Blocks**
-- height INTEGER (PK)
-- hash STRING (hex)
-- tx_count INTEGER
-
-**Transactions**
-- id INTEGER (PK) (not txid)
-- block INTEGER (references block(height))
-- txid STRING (hex)
-- scalar STRING (hex)
-
-**Outputs**
-- id INTEGER (PK)
-- tx INTEGER (references transactions(id), used for outpoint)
-- vout INTEGER (outpoint index)
-- value INTEGER (sats)
-- script_pub_key STRING (hex encoded)
-
-# Plan
-
-## JSON-RPC vs. gRPC vs REST
-
-Initially I wanted to use JSON-RPC/gRPC because I thought its a good fit for subscriptions but it
-actually does not make any sense because the main purpose is just to GET public tweak data.
-
-So I'll implement a REST API with `axum` and for the subscriptions just have simple websockets that
-only stream data but take no requests.
-
-## Functionality
-
-Look at API for reference.
-- get public tweak data for blocks, or transactions.
-- get transactions by block or txid
-- create a wallet (getting a unique wallet id)
-- subscribe to new public tweaks via WS
-- subscribe to new txs of new blocks via WS
-- subscribe to outpouts for some `id` wallet via WS.
-
-Wallet should ofc. only be used for demos/testing.
+_Subscribes to new transactions. Streamed messages are JSON from `/blocks/<height>/transactions`._
 
 
 # Notes
