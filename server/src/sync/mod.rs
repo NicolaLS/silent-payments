@@ -9,11 +9,11 @@ use secp256k1::{PublicKey, Scalar};
 use tokio::time::sleep;
 use tracing::{debug, info};
 
-use crate::store::Store;
 use crate::{
     Result, calculate_input_hash, has_output_witness_version_greater_v1, has_taproot_outputs,
     store::model, try_get_input_public_key,
 };
+use crate::{config::SyncerConfig, store::Store};
 
 mod rpc;
 
@@ -23,6 +23,7 @@ pub struct Syncer<C: BitcionRpc> {
     client: C,
     store: Store,
     prevout_cache: PrevoutCache,
+    sync_from: i64,
 }
 
 #[derive(Debug)]
@@ -74,14 +75,15 @@ impl PrevoutCache {
 }
 
 impl<C: BitcionRpc> Syncer<C> {
-    pub fn new(client: C, store: Store, cache_size: usize) -> Self {
+    pub fn new(cfg: SyncerConfig, client: C, store: Store) -> Self {
         info!("Initializing Syncer.");
-        let prevout_cache = PrevoutCache::new(cache_size);
+        let prevout_cache = PrevoutCache::new(cfg.cache_size);
 
         Self {
             client,
             store,
             prevout_cache,
+            sync_from: cfg.sync_from,
         }
     }
 
@@ -221,7 +223,8 @@ impl<C: BitcionRpc> Syncer<C> {
             .store
             .get_synced_blocks_height()
             .await?
-            .unwrap_or_default() as u64;
+            .unwrap_or(self.sync_from) as u64;
+
         info!("Start syncing blocks from height: {}", synced_blocks);
         loop {
             let chain_tip = self.client.get_chain_tip()? as u64;

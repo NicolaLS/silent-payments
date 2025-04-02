@@ -22,6 +22,7 @@ pub struct SyncerConfig {
     pub rpc_user: String,
     pub rpc_pass: String,
     pub sync_from: i64,
+    pub cache_size: usize,
 }
 
 impl Config {
@@ -42,6 +43,9 @@ impl Config {
                 rpc_pass: get_env("RPC_PASS")?,
                 sync_from: get_env("SYNC_FROM")?
                     .parse::<i64>()
+                    .map_err(|_| Error::Config)?,
+                cache_size: get_env("CACHE_SIZE")?
+                    .parse::<usize>()
                     .map_err(|_| Error::Config)?,
             },
         })

@@ -21,15 +21,15 @@ async fn main() -> Result<()> {
     let server_db = db.clone();
     let server = Server::new(cfg.server, server_db);
 
-    let rpcurl = cfg.syncer.rpc_url;
-    let rpcuser = cfg.syncer.rpc_user;
-    let rpcpass = cfg.syncer.rpc_pass;
+    let rpcurl = cfg.syncer.rpc_url.clone();
+    let rpcuser = cfg.syncer.rpc_user.clone();
+    let rpcpass = cfg.syncer.rpc_pass.clone();
     let auth = Auth::UserPass(rpcuser.into(), rpcpass.into());
     let client = Client::new(&rpcurl, auth)?;
 
     // Run syncer.
     info!("Running syncer in task");
-    let mut syncer = Syncer::new(client, db.clone(), 1000);
+    let mut syncer = Syncer::new(cfg.syncer, client, db.clone());
     tokio::task::spawn(async move { syncer.sync_from().await });
 
     // Subscribe blocks that were added to DB.
