@@ -10,8 +10,8 @@ use sqlx::{Sqlite, SqlitePool, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast;
 use tracing::debug;
 
-use crate::config::DatabaseConfig;
 use crate::Result;
+use crate::config::DatabaseConfig;
 
 pub mod model;
 
@@ -32,6 +32,9 @@ impl Store {
     pub async fn new(cfg: DatabaseConfig) -> Result<Self> {
         let options = SqliteConnectOptions::from_str(&cfg.database_url)?.create_if_missing(true);
         let pool = SqlitePool::connect_with(options).await?;
+
+        // Database migrations
+        sqlx::migrate!("./migrations/").run(&pool).await?;
 
         let (sub_tx, _) = broadcast::channel(512);
 

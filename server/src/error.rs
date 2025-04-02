@@ -18,6 +18,8 @@ pub enum Error {
     // -- module: store.rs
     #[from]
     Db(sqlx::Error),
+    #[from]
+    MigrateDb(sqlx::migrate::MigrateError),
 
     // -- external
     #[from]
