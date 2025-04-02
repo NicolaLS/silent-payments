@@ -4,18 +4,18 @@ use bitcoincore_rpc::bitcoin::{
 };
 use secp256k1::{Parity, PublicKey, XOnlyPublicKey};
 
+pub mod config;
 pub mod server;
 pub mod store;
 pub mod sync;
-pub mod config;
 
 #[cfg(test)]
 pub mod tests;
 
 mod error;
 
-pub use self::error::{Error, Result};
 pub use self::config::Config;
+pub use self::error::{Error, Result};
 
 #[derive(Debug, Clone)]
 pub struct SPBlock {

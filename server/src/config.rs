@@ -26,7 +26,7 @@ pub struct SyncerConfig {
 
 impl Config {
     pub fn try_from_env() -> Result<Self> {
-        dotenvy::dotenv().map_err(|_|Error::Config)?;
+        dotenvy::dotenv().map_err(|_| Error::Config)?;
 
         Ok(Self {
             server: ServerConfig {
@@ -40,7 +40,9 @@ impl Config {
                 rpc_url: get_env("RPC_URL")?,
                 rpc_user: get_env("RPC_USER")?,
                 rpc_pass: get_env("RPC_PASS")?,
-                sync_from: get_env("SYNC_FROM")?.parse::<i64>().map_err(|_|Error::Config)?,
+                sync_from: get_env("SYNC_FROM")?
+                    .parse::<i64>()
+                    .map_err(|_| Error::Config)?,
             },
         })
     }
